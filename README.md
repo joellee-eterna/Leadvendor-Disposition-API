@@ -1,8 +1,8 @@
 # Lead Vendor Disposition API
 
 Returns the policies sold from calls to QIL's numbers: which number was
-dialed, the caller's phone number, the invoiced annual premium, and the sale
-date.
+dialed, the caller's phone number, the invoiced annual premium, the sale
+date, and the policy's status with the carrier.
 
 ## Endpoint
 
@@ -27,6 +27,7 @@ All are optional.
 |---|---|---|---|
 | `crm_sold_date_from` | `YYYY-MM-DD` | none | Sale date, inclusive |
 | `crm_sold_date_to` | `YYYY-MM-DD` | none | Sale date, inclusive |
+| `updated_since` | RFC 3339 timestamp | none | Only rows whose `crm_updated_at` is at or after this, e.g. `2026-11-01T00:00:00Z` |
 | `limit` | integer | `1000` | Rows per page, max `5000` |
 | `cursor` | string | none | `next_cursor` from the previous page; omit for the first page |
 
@@ -41,14 +42,26 @@ All are optional.
       "source": "QIL - SOCIAL",
       "contact_phone": "+17145550142",
       "invoiced_annual_premium": 1026.00,
-      "crm_sold_date": "2026-09-02"
+      "crm_sold_date": "2026-09-02",
+      "crm_updated_at": "2026-09-20T15:04:05Z",
+      "rec_status": "EFF_PAID",
+      "comm_recvd_date": "2026-10-01T00:00:00Z",
+      "termination_date": null,
+      "carrier": "Example Life Insurance Co.",
+      "product": "Final Expense Whole Life"
     },
     {
       "to_number": "+19497732434",
       "source": "QIL - TV FEX",
       "contact_phone": "+19095550187",
       "invoiced_annual_premium": 684.36,
-      "crm_sold_date": "2026-09-02"
+      "crm_sold_date": "2026-09-02",
+      "crm_updated_at": "2026-09-02T22:10:00Z",
+      "rec_status": null,
+      "comm_recvd_date": null,
+      "termination_date": null,
+      "carrier": null,
+      "product": null
     }
   ],
   "has_more": true,
@@ -63,9 +76,36 @@ All are optional.
 | `contact_phone` | The caller's phone number |
 | `invoiced_annual_premium` | Annual premium invoiced for the policy, in USD |
 | `crm_sold_date` | Date the policy was sold, `YYYY-MM-DD` |
+| `crm_updated_at` | When the sale record was last updated; `updated_since` filters on this |
+| `rec_status` | The policy's status with the carrier (see below) |
+| `comm_recvd_date` | When commission was received from the carrier |
+| `termination_date` | When the policy was terminated; `null` while active |
+| `carrier` | Insurance carrier |
+| `product` | Product sold |
 
 Each row is one sold policy, so a caller who bought more than one policy
 appears more than once. Rows are ordered by `crm_sold_date`, oldest first.
+
+`rec_status`, `comm_recvd_date`, `termination_date`, `carrier` and `product`
+are all `null` until the carrier has a record of the policy. Common
+`rec_status` values:
+
+| Value | Meaning |
+|---|---|
+| `EFF_PAID`, `EFF_AT_RISK` | In force |
+| `EFF_CANCELLED` | Cancelled |
+| `EFF_RCB` | Charged back |
+| `UW_*` | In underwriting (`UW_LAPSED`: failed in underwriting) |
+
+Other values can appear.
+
+### Pulling only what changed
+
+Pass the largest `crm_updated_at` from your previous run as `updated_since`.
+The filter is inclusive, so rows at that exact time come back again; skip
+ones you already have. Carrier-side changes (`rec_status`,
+`comm_recvd_date`, `termination_date`) don't update `crm_updated_at`, so to
+catch cancellations and chargebacks, re-pull recent sale dates periodically.
 
 ## Pagination
 
@@ -99,6 +139,7 @@ A range with no sales returns `{"count": 0, "results": [], "has_more": false}`.
 | 401 | `{"error": "Unauthorized", "message": "Invalid API key"}` | Wrong key |
 | 400 | `{"error": "Invalid crm_sold_date_from, expected YYYY-MM-DD"}` | Bad date (same for `crm_sold_date_to`) |
 | 400 | `{"error": "crm_sold_date_from must not be after crm_sold_date_to"}` | Dates reversed |
+| 400 | `{"error": "Invalid updated_since, expected an RFC 3339 timestamp like 2026-11-01T00:00:00Z"}` | Bad `updated_since` |
 | 400 | `{"error": "Invalid cursor"}` | `cursor` wasn't a `next_cursor` from this API |
 | 500 | `{"error": "Failed to list dispositions"}` | Server error; retry later |
 
