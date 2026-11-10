@@ -108,3 +108,43 @@ A range with no sales returns `{"count": 0, "results": [], "has_more": false}`.
 curl "https://api.goeterna.com/api/v1/qil/dispositions?crm_sold_date_from=2026-09-01&crm_sold_date_to=2026-09-30" \
   -H "X-API-Key: <your key>"
 ```
+
+## Sending data to us
+
+```
+POST https://api.goeterna.com/api/v1/qil/ingest
+```
+
+Uses the same `X-API-Key` header. Any format is accepted (JSON, CSV, form
+data, etc.); set `Content-Type` to match what you send. Each request is
+stored exactly as received, up to 10 MB per request.
+
+### Response `200`
+
+```json
+{
+  "id": "3f6c1b2a-8d2e-4c1a-9b7e-2f5d6a1c0e94",
+  "received_at": "2026-11-09T18:20:41Z"
+}
+```
+
+`id` is your receipt for that delivery; include it if you need to ask us
+about a specific one.
+
+### Errors
+
+| Status | Body | Cause |
+|---|---|---|
+| 401 | `{"error": "Unauthorized", "message": "X-API-Key header required"}` | No `X-API-Key` header |
+| 401 | `{"error": "Unauthorized", "message": "Invalid API key"}` | Wrong key |
+| 413 | `{"error": "Payload too large", "max_bytes": 10485760}` | Body over 10 MB; split it into smaller requests |
+| 500 | `{"error": "Failed to store payload"}` | Server error; retry later |
+
+### Example
+
+```bash
+curl -X POST "https://api.goeterna.com/api/v1/qil/ingest" \
+  -H "X-API-Key: <your key>" \
+  -H "Content-Type: application/json" \
+  -d '{"to_number": "+19498687709", "contact_phone": "+17145550142", "disposition": "SOLD"}'
+```
